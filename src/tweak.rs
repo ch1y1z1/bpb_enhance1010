@@ -30,6 +30,7 @@ pub fn tweak_game_gde(file_path: &str) -> Result<()> {
     replace_files!(&mut file, &index, {
         "res://Core/Game.gde" => "../assets/Game.gde",
         "res://Interface/ItemLibrary/ItemLibrary.gde" => "../assets/ItemLibrary.gde",
+        "res://Core/Main.tscn" => "../assets/Main.tscn",
     });
 
     Ok(())
