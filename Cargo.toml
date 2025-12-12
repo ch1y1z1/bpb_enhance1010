@@ -1,7 +1,11 @@
 [package]
-name = "bpb_helper"
+name = "bpb_enhance"
 version = "0.1.0"
 edition = "2024"
+
+[[bin]]
+name = "bpb_enhance"
+path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.100"

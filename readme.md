@@ -6,7 +6,7 @@
 
 ## 安装
 
-在 Release 中下载已经编译好的二进制文件（bpb_helper.exe）。运行下载好的文件。
+在 Release 中下载已经编译好的二进制文件（bpb_enhance.exe）。运行下载好的文件。
 
 ![安装软件截图](./pics/image.png)
 
