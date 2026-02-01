@@ -7,6 +7,9 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 
 #[cfg(feature = "gui")]
+use anyhow::anyhow;
+
+#[cfg(feature = "gui")]
 use gpui::{
     AppContext, Application, Bounds, Context as GpuiContext, IntoElement, ParentElement, Render,
     SharedString, Styled, Window, WindowBounds, WindowOptions, div, point, px, size,

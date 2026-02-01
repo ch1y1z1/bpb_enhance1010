@@ -8,7 +8,6 @@ name = "bpb_enhance"
 path = "src/main.rs"
 
 [features]
-default = ["cli"]
 cli = ["clap"]
 gui = ["gpui", "gpui-component", "rfd", "rust-embed"]
 
