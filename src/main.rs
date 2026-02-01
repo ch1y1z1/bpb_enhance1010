@@ -4,12 +4,14 @@ mod pck;
 mod tweak;
 
 use std::path::PathBuf;
+use anyhow::{Context, Result};
 
-use anyhow::{Context, Result, anyhow};
+#[cfg(feature = "gui")]
 use gpui::{
     AppContext, Application, Bounds, Context as GpuiContext, IntoElement, ParentElement, Render,
     SharedString, Styled, Window, WindowBounds, WindowOptions, div, point, px, size,
 };
+#[cfg(feature = "gui")]
 use gpui_component::{
     ActiveTheme as _, Root, StyledExt as _, WindowExt,
     button::{Button, ButtonVariants},
@@ -18,14 +20,36 @@ use gpui_component::{
     notification::NotificationType,
     v_flex,
 };
+#[cfg(feature = "gui")]
 use rfd::FileDialog;
+#[cfg(feature = "gui")]
 use std::sync::mpsc;
+#[cfg(feature = "gui")]
 use std::thread;
+#[cfg(feature = "gui")]
 use tweak::tweak_game_gde;
 
+#[cfg(feature = "gui")]
 const DEFAULT_STEAM_PATH: &str = r"C:\Program Files (x86)\Steam\steamapps\common\Backpack Battles";
+#[cfg(feature = "gui")]
 const DEFAULT_PCK_NAME: &str = "BackpackBattles.pck";
 
+#[cfg(feature = "cli")]
+use clap::Parser;
+
+#[cfg(feature = "cli")]
+#[derive(Debug, Parser)]
+#[command(name = "bpb_enhance")]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    #[arg(short, long, help = "Path to the PCK file")]
+    pck: String,
+
+    #[arg(short, long, help = "Path to the assets folder containing replace.toml")]
+    assets: String,
+}
+
+#[cfg(feature = "gui")]
 fn main() {
     Application::new().run(|app| {
         gpui_component::init(app);
@@ -47,12 +71,49 @@ fn main() {
     });
 }
 
+#[cfg(feature = "cli")]
+fn main() -> Result<()> {
+    let args = Args::parse();
+
+    let pck_path = PathBuf::from(&args.pck);
+    let assets_path = PathBuf::from(&args.assets);
+
+    if !pck_path.exists() {
+        anyhow::bail!("PCK file does not exist: {}", args.pck);
+    }
+    if !pck_path.is_file() {
+        anyhow::bail!("Path is not a file: {}", args.pck);
+    }
+    if !assets_path.exists() {
+        anyhow::bail!("Assets folder does not exist: {}", args.assets);
+    }
+    if !assets_path.is_dir() {
+        anyhow::bail!("Path is not a directory: {}", args.assets);
+    }
+
+    let replace_toml = assets_path.join("replace.toml");
+    if !replace_toml.exists() {
+        anyhow::bail!("replace.toml not found in assets folder: {}", args.assets);
+    }
+
+    println!("Processing PCK file: {}", args.pck);
+    println!("Using assets folder: {}", args.assets);
+
+    tweak::tweak_game_gde(&args.pck, &args.assets)
+        .with_context(|| format!("Failed to tweak PCK file: {}", args.pck))?;
+
+    println!("Successfully tweaked PCK file: {}", args.pck);
+    Ok(())
+}
+
+#[cfg(feature = "gui")]
 struct RootView {
     game_path: gpui::Entity<InputState>,
     default_detected: bool,
     picker_open: bool,
 }
 
+#[cfg(feature = "gui")]
 impl RootView {
     fn new(window: &mut Window, cx: &mut GpuiContext<Self>) -> Self {
         let detected_path = detect_default_path();
@@ -77,6 +138,7 @@ impl RootView {
     }
 }
 
+#[cfg(feature = "gui")]
 impl Render for RootView {
     fn render(&mut self, window: &mut Window, cx: &mut GpuiContext<Self>) -> impl IntoElement {
         let game_path_input = Input::new(&self.game_path).prefix(div().text_sm().child("📁"));
@@ -133,6 +195,7 @@ impl Render for RootView {
     }
 }
 
+#[cfg(feature = "gui")]
 impl RootView {
     fn default_hint(&self, cx: &GpuiContext<Self>) -> Vec<gpui::AnyElement> {
         if self.default_detected {
@@ -240,6 +303,7 @@ impl RootView {
     }
 }
 
+#[cfg(feature = "gui")]
 fn detect_default_path() -> Option<String> {
     let default = PathBuf::from(DEFAULT_STEAM_PATH).join(DEFAULT_PCK_NAME);
     if default.exists() {
@@ -249,6 +313,7 @@ fn detect_default_path() -> Option<String> {
     }
 }
 
+#[cfg(feature = "gui")]
 fn resolve_pck_path(input: &str) -> Result<PathBuf> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
