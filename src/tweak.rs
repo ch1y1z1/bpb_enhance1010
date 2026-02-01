@@ -94,25 +94,28 @@ fn run_tweak<S: AssetSource>(file_path: &str, source: &S) -> Result<()> {
         .read(true)
         .write(true)
         .open(file_path)
-        .with_context(|| format!("无法打开文件: {}", file_path))?;
+        .with_context(|| format!("修改失败，无法打开文件: {}", file_path))?;
 
     println!("正在读取 PCK 文件头与索引...");
-    let (header, index) = pck::read_header_and_index(&mut file).context("读取 PCK 头与索引失败")?;
+    let (header, index) = pck::read_header_and_index(&mut file)
+        .with_context(|| format!("修改失败，读取 PCK 头与索引失败: {}", file_path))?;
 
     println!("正在加载版本配置...");
-    let version_config =
-        parse_version_config(&source.config_content()).context("加载版本配置失败")?;
+    let version_config = parse_version_config(&source.config_content())
+        .with_context(|| format!("修改失败，加载版本配置失败: {}", file_path))?;
     println!(
         "✓ 版本配置加载成功，要求游戏版本: {}",
         version_config.required_game_version
     );
 
     println!("正在校验版本信息...");
-    let has_plugin_version = check_plugin_version_txt(&mut file, &header, &index, &version_config)?;
+    let has_plugin_version = check_plugin_version_txt(&mut file, &header, &index, &version_config)
+        .with_context(|| format!("修改失败，版本校验失败: {}", file_path))?;
 
     if !has_plugin_version {
         println!("未检测到 plugin_version.txt，正在校验 Game.gde 哈希...");
-        check_game_gde_hash(&mut file, &header, &index, &version_config)?;
+        check_game_gde_hash(&mut file, &header, &index, &version_config)
+            .with_context(|| format!("修改失败，哈希校验失败: {}", file_path))?;
     }
 
     println!("正在加载替换配置...");
@@ -317,7 +320,7 @@ fn check_plugin_version_txt(
 
         if game_version != version_config.required_game_version {
             anyhow::bail!(
-                "游戏版本不匹配！\n当前游戏版本: {}\n模组要求版本: {}",
+                "游戏版本不匹配，当前已注入版本: {}，当前插件适用于游戏版本: {}",
                 game_version,
                 version_config.required_game_version
             );
@@ -349,14 +352,14 @@ fn check_game_gde_hash(
         .get(&version_config.required_game_version)
         .ok_or_else(|| {
             anyhow!(
-                "未知游戏版本！replace.toml 中未定义版本 {} 的哈希值",
+                "游戏版本未知，当前插件适用于游戏版本 {}",
                 version_config.required_game_version
             )
         })?;
 
     if current_hash != *expected_hash {
         anyhow::bail!(
-            "Game.gde 文件哈希不匹配！\n当前文件哈希: {}\n要求版本 ({}) 的哈希: {}\n请确认使用正确版本的原始游戏文件。",
+            "游戏版本不匹配，当前文件版本哈希: {}，当前插件适用于游戏版本 {}（期望哈希: {}）",
             current_hash,
             version_config.required_game_version,
             expected_hash

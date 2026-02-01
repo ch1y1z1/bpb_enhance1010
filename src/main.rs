@@ -237,7 +237,8 @@ impl RootView {
                 .ok_or_else(|| anyhow!("路径包含非法字符"))?
                 .to_string();
 
-            tweak_game_gde(&pck_str).with_context(|| format!("修改失败，文件: {}", pck_str))?;
+            tweak_game_gde(&pck_str)
+                .with_context(|| format!("修改失败，文件: {}", pck_str))?;
 
             Ok::<_, anyhow::Error>(pck_str)
         });
@@ -248,7 +249,7 @@ impl RootView {
                 window.push_notification((NotificationType::Success, SharedString::from(msg)), cx);
             }
             Err(err) => {
-                let message = err.to_string();
+                let message = format!("{:#}", err);
 
                 println!("{:?}", err);
 
