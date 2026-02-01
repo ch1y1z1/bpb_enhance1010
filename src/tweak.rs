@@ -1,18 +1,81 @@
 use crate::pck;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use binrw::BinRead;
+use cfg_if::cfg_if;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::PathBuf;
 
-#[cfg(feature = "gui")]
-use rust_embed::RustEmbed;
+cfg_if! {
+    if #[cfg(feature = "gui")] {
+        use rust_embed::RustEmbed;
 
-#[cfg(feature = "gui")]
-#[derive(RustEmbed)]
-#[folder = "assets"]
-struct EmbeddedAssets;
+        #[derive(RustEmbed)]
+        #[folder = "assets"]
+        struct EmbeddedAssets;
+
+        struct EmbeddedSource;
+
+        impl AssetSource for EmbeddedSource {
+            fn get_file(&self, relative_path: &str) -> Result<Vec<u8>> {
+                let asset = EmbeddedAssets::get(relative_path)
+                    .ok_or_else(|| anyhow!("嵌入资源缺失: {}", relative_path))?;
+                Ok(asset.data.to_vec())
+            }
+
+            fn config_content(&self) -> Cow<'static, str> {
+                let config = EmbeddedAssets::get("replace.toml").expect("嵌入资源中缺少 replace.toml");
+                let content = std::str::from_utf8(&config.data).expect("无法解析 replace.toml 为 UTF-8");
+                Cow::Owned(content.to_string())
+            }
+        }
+
+        pub fn tweak_game_gde(file_path: &str) -> Result<()> {
+            let source = EmbeddedSource;
+            run_tweak(file_path, &source)
+        }
+    } else {
+        struct FileSystemSource {
+            base_path: PathBuf,
+        }
+
+        impl AssetSource for FileSystemSource {
+            fn get_file(&self, relative_path: &str) -> Result<Vec<u8>> {
+                let full_path = if relative_path.starts_with("../") {
+                    self.base_path.join(relative_path.trim_start_matches("../"))
+                } else if relative_path.starts_with("./") {
+                    self.base_path.join(relative_path.trim_start_matches("./"))
+                } else {
+                    self.base_path.join(relative_path)
+                };
+
+                if !full_path.exists() {
+                    bail!("资产文件不存在: {}", full_path.display());
+                }
+
+                std::fs::read(&full_path)
+                    .with_context(|| format!("无法读取资产文件: {}", full_path.display()))
+            }
+
+            fn config_content(&self) -> Cow<'static, str> {
+                let config_path = self.base_path.join("replace.toml");
+                let config_str = std::fs::read_to_string(&config_path)
+                    .with_context(|| format!("无法读取 replace.toml: {}", config_path.display()))
+                    .unwrap();
+                Cow::Owned(config_str)
+            }
+        }
+
+        pub fn tweak_game_gde(file_path: &str, assets_path: &str) -> Result<()> {
+            let source = FileSystemSource {
+                base_path: PathBuf::from(assets_path),
+            };
+            run_tweak(file_path, &source)
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 struct VersionConfig {
@@ -23,69 +86,7 @@ struct VersionConfig {
 
 trait AssetSource {
     fn get_file(&self, relative_path: &str) -> Result<Vec<u8>>;
-    fn config_content(&self) -> &str;
-}
-
-#[cfg(feature = "gui")]
-struct EmbeddedSource;
-
-#[cfg(feature = "gui")]
-impl AssetSource for EmbeddedSource {
-    fn get_file(&self, relative_path: &str) -> Result<Vec<u8>> {
-        let asset = EmbeddedAssets::get(relative_path)
-            .ok_or_else(|| anyhow!("嵌入资源缺失: {}", relative_path))?;
-        Ok(asset.data.to_vec())
-    }
-
-    fn config_content(&self) -> &str {
-        let config = EmbeddedAssets::get("replace.toml").expect("嵌入资源中缺少 replace.toml");
-        std::str::from_utf8(&config.data).expect("无法解析 replace.toml 为 UTF-8")
-    }
-}
-
-struct FileSystemSource {
-    base_path: PathBuf,
-}
-
-impl AssetSource for FileSystemSource {
-    fn get_file(&self, relative_path: &str) -> Result<Vec<u8>> {
-        let full_path = if relative_path.starts_with("../") {
-            self.base_path.join(relative_path.trim_start_matches("../"))
-        } else if relative_path.starts_with("./") {
-            self.base_path.join(relative_path.trim_start_matches("./"))
-        } else {
-            self.base_path.join(relative_path)
-        };
-
-        if !full_path.exists() {
-            anyhow::bail!("资产文件不存在: {}", full_path.display());
-        }
-
-        std::fs::read(&full_path)
-            .with_context(|| format!("无法读取资产文件: {}", full_path.display()))
-    }
-
-    fn config_content(&self) -> &str {
-        let config_path = self.base_path.join("replace.toml");
-        let config_str = std::fs::read_to_string(&config_path)
-            .with_context(|| format!("无法读取 replace.toml: {}", config_path.display()))
-            .unwrap();
-        Box::leak(config_str.into_boxed_str())
-    }
-}
-
-#[cfg(feature = "gui")]
-pub fn tweak_game_gde(file_path: &str) -> Result<()> {
-    let source = EmbeddedSource;
-    run_tweak(file_path, &source)
-}
-
-#[cfg(feature = "cli")]
-pub fn tweak_game_gde(file_path: &str, assets_path: &str) -> Result<()> {
-    let source = FileSystemSource {
-        base_path: PathBuf::from(assets_path),
-    };
-    run_tweak(file_path, &source)
+    fn config_content(&self) -> Cow<'static, str>;
 }
 
 fn run_tweak<S: AssetSource>(file_path: &str, source: &S) -> Result<()> {
@@ -100,7 +101,7 @@ fn run_tweak<S: AssetSource>(file_path: &str, source: &S) -> Result<()> {
 
     println!("正在加载版本配置...");
     let version_config =
-        parse_version_config(source.config_content()).context("加载版本配置失败")?;
+        parse_version_config(&source.config_content()).context("加载版本配置失败")?;
     println!(
         "✓ 版本配置加载成功，要求游戏版本: {}",
         version_config.required_game_version
@@ -116,7 +117,7 @@ fn run_tweak<S: AssetSource>(file_path: &str, source: &S) -> Result<()> {
 
     println!("正在加载替换配置...");
     let (mut replacements_owned, delete_list) =
-        parse_config(source.config_content(), |asset_path| {
+        parse_config(&source.config_content(), |asset_path| {
             source.get_file(asset_path)
         })
         .context("加载 replace.toml 失败")?;
